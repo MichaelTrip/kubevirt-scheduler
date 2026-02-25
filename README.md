@@ -28,7 +28,7 @@ VM Pod created
   │    └─ Plugin is a no-op — KubeVirt migration controller
   │       handles node selection via node affinity
   │
-  └─ annotation kubevirt-scheduler/co-schedule: "true"
+  └─ annotation scheduler.kubevirt-scheduler.io/co-schedule: "true"
        │
        ├─ No share-manager found yet
        │    └─ VM schedules freely on best node
@@ -91,7 +91,7 @@ spec:
   template:
     metadata:
       annotations:
-        kubevirt-scheduler/co-schedule: "true"   # opt-in to co-scheduling
+        scheduler.kubevirt-scheduler.io/co-schedule: "true"   # opt-in to co-scheduling
     spec:
       schedulerName: kubevirt-scheduler           # use our custom scheduler
       domain:
@@ -128,13 +128,79 @@ Migration target pods are identified by the label `kubevirt.io/migrationJobUID` 
 
 | Item | Value |
 |---|---|
-| Opt-in annotation key | `kubevirt-scheduler/co-schedule` |
+| Opt-in annotation key | `scheduler.kubevirt-scheduler.io/co-schedule` |
 | Opt-in annotation value | `true` |
 | Scheduler name | `kubevirt-scheduler` |
 | Share-manager namespace | `longhorn-system` |
 | ShareManager CRD | `sharemanagers.longhorn.io/v1beta2` |
 | Share-manager pod name pattern | `share-manager-<pv-name>` |
 | Migration target label | `kubevirt.io/migrationJobUID` |
+
+## Debugging / Logging
+
+The plugin emits structured log messages using `klog` at verbosity level **4** (`V(4)`). The default deployment ships with `--v=4` so plugin decisions are visible out of the box.
+
+### Enabling / changing verbosity
+
+The verbosity flag is set in [`manifests/deployment.yaml`](manifests/deployment.yaml):
+
+```yaml
+command:
+  - /kubevirt-scheduler
+  - --config=/etc/kubernetes/scheduler/scheduler-config.yaml
+  - --v=4   # change to 2 for quieter output, 5 for trace-level
+```
+
+To change it on a running cluster without redeploying:
+
+```bash
+kubectl -n kube-system patch deployment kubevirt-scheduler --type=json \
+  -p='[{"op":"replace","path":"/spec/template/spec/containers/0/command/2","value":"--v=4"}]'
+```
+
+### What gets logged
+
+| Verbosity | Message |
+|---|---|
+| `V(4)` | Migration target pod detected — plugin skipped (includes `migrationJobUID`) |
+| `V(4)` | No share-manager found — all nodes pass / score 0 |
+| `V(4)` | Node accepted — share-manager co-located on same node |
+| `V(4)` | Node rejected — share-manager on a different node |
+| `V(4)` | Score assigned — max (100) or 0, with reason |
+| `V(5)` | Pod not opted in — plugin skipped |
+| `ErrorS` | Share-manager lookup failed (API error) |
+
+### Example log output
+
+**VM scheduled on share-manager node:**
+```
+LonghornCoSchedule/Filter: node accepted (share-manager co-located)  pod=virtualmachines/virt-launcher-my-vm-xxxxx node=virt01 shareManagerNode=virt01
+LonghornCoSchedule/Score: node matches share-manager, scoring max    pod=... node=virt01 shareManagerNode=virt01 score=100
+LonghornCoSchedule/Score: node does not match share-manager, scoring 0  pod=... node=virt02 shareManagerNode=virt01
+```
+
+**Node rejected (wrong node):**
+```
+LonghornCoSchedule/Filter: node rejected (share-manager on different node)  pod=... node=virt02 shareManagerNode=virt01
+```
+
+**Live migration target (plugin bypassed):**
+```
+LonghornCoSchedule/Filter: migration target pod, skipping (KubeVirt migration controller handles placement)  pod=... migrationJobUID=08b02237-4ab6-493b-a4e0-c90e5e940a47
+LonghornCoSchedule/Score: migration target pod, skipping (KubeVirt migration controller handles placement)   pod=... node=virt02 migrationJobUID=08b02237-4ab6-493b-a4e0-c90e5e940a47
+```
+
+**No share-manager yet (free scheduling):**
+```
+LonghornCoSchedule/Filter: no share-manager found, all nodes pass  pod=... node=virt01
+LonghornCoSchedule/Score: no share-manager found, scoring 0        pod=... node=virt01
+```
+
+### Tailing the scheduler logs
+
+```bash
+kubectl -n kube-system logs -l app=kubevirt-scheduler -f | grep LonghornCoSchedule
+```
 
 ## Development
 
