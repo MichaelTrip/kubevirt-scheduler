@@ -1,4 +1,4 @@
-module github.com/michaelbeaumont/kubevirt-scheduler
+module github.com/michaeltrip/kubevirt-scheduler
 
 go 1.23.0
 
