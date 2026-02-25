@@ -1,6 +1,6 @@
 # Compiled binaries
 kubevirt-scheduler
-scheduler
+/scheduler
 
 # Go build cache
 /vendor/
