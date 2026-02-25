@@ -31,7 +31,7 @@ spec:
       containers:
         - name: kubevirt-scheduler
           # Replace with your actual image reference after building and pushing
-          image: ghcr.io/michaeltrip/kubevirt-scheduler:latest
+          image: ghcr.io/michaeltrip/kubevirt-scheduler:cea09193382c45e47afead09e1389c8ed6424847
           imagePullPolicy: IfNotPresent
           command:
             - /kubevirt-scheduler
@@ -69,6 +69,8 @@ spec:
                 - ALL
             readOnlyRootFilesystem: true
             runAsNonRoot: true
+            runAsUser: 65532   # distroless nonroot UID
+            runAsGroup: 65532  # distroless nonroot GID
             seccompProfile:
               type: RuntimeDefault
       volumes:

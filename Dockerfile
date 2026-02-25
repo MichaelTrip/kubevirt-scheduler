@@ -27,6 +27,6 @@ FROM gcr.io/distroless/static:nonroot
 
 COPY --from=builder /workspace/kubevirt-scheduler /kubevirt-scheduler
 
-USER nonroot:nonroot
+USER 65532:65532
 
 ENTRYPOINT ["/kubevirt-scheduler"]
