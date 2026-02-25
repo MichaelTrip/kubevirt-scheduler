@@ -38,8 +38,10 @@ func makeVM(name, namespace string, annotated bool, pvcNames ...string) *corev1.
 	return pod
 }
 
-// makePVC creates a minimal RWX PVC.
-func makePVC(name, namespace string) *corev1.PersistentVolumeClaim {
+// makePVC creates a minimal RWX PVC bound to pvName.
+// Longhorn names share-manager pods after the PV name (the PVC UID), not the
+// PVC claim name, so tests must supply a pvName that matches.
+func makePVC(name, namespace, pvName string) *corev1.PersistentVolumeClaim {
 	return &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -47,15 +49,18 @@ func makePVC(name, namespace string) *corev1.PersistentVolumeClaim {
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany},
+			VolumeName:  pvName,
 		},
 	}
 }
 
 // makeShareManagerPod creates a minimal Longhorn share-manager pod.
-func makeShareManagerPod(pvcName, nodeName string) *corev1.Pod {
+// pvName is the PV name (= PVC UID for dynamic provisioning), which Longhorn
+// uses as the suffix: share-manager-<pvName>.
+func makeShareManagerPod(pvName, nodeName string) *corev1.Pod {
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      ShareManagerPrefix + pvcName,
+			Name:      ShareManagerPrefix + pvName,
 			Namespace: LonghornNamespace,
 		},
 		Spec: corev1.PodSpec{
@@ -121,6 +126,7 @@ func TestFindShareManagerNode(t *testing.T) {
 	const (
 		vmNamespace = "default"
 		pvcName     = "my-rwx-pvc"
+		pvName      = "pvc-54191094-16e2-41ae-8f06-3abf5d1fbae1" // simulated PV/UID name
 		targetNode  = "node-2"
 	)
 
@@ -140,15 +146,15 @@ func TestFindShareManagerNode(t *testing.T) {
 		{
 			name:     "PVC exists but no share-manager pod",
 			pod:      makeVM("vm", vmNamespace, true, pvcName),
-			objects:  []runtime.Object{makePVC(pvcName, vmNamespace)},
+			objects:  []runtime.Object{makePVC(pvcName, vmNamespace, pvName)},
 			wantNode: "",
 		},
 		{
 			name: "share-manager pod running on target node",
 			pod:  makeVM("vm", vmNamespace, true, pvcName),
 			objects: []runtime.Object{
-				makePVC(pvcName, vmNamespace),
-				makeShareManagerPod(pvcName, targetNode),
+				makePVC(pvcName, vmNamespace, pvName),
+				makeShareManagerPod(pvName, targetNode),
 			},
 			wantNode: targetNode,
 		},
@@ -156,9 +162,9 @@ func TestFindShareManagerNode(t *testing.T) {
 			name: "share-manager pod exists but not running",
 			pod:  makeVM("vm", vmNamespace, true, pvcName),
 			objects: []runtime.Object{
-				makePVC(pvcName, vmNamespace),
+				makePVC(pvcName, vmNamespace, pvName),
 				func() *corev1.Pod {
-					p := makeShareManagerPod(pvcName, targetNode)
+					p := makeShareManagerPod(pvName, targetNode)
 					p.Status.Phase = corev1.PodPending
 					return p
 				}(),
@@ -173,9 +179,10 @@ func TestFindShareManagerNode(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: pvcName, Namespace: vmNamespace},
 					Spec: corev1.PersistentVolumeClaimSpec{
 						AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+						VolumeName:  pvName,
 					},
 				},
-				makeShareManagerPod(pvcName, targetNode),
+				makeShareManagerPod(pvName, targetNode),
 			},
 			wantNode: "",
 		},
@@ -202,6 +209,7 @@ func TestFilter(t *testing.T) {
 	const (
 		vmNamespace = "default"
 		pvcName     = "my-rwx-pvc"
+		pvName      = "pvc-54191094-16e2-41ae-8f06-3abf5d1fbae1"
 		targetNode  = "node-2"
 		otherNode   = "node-1"
 	)
@@ -216,28 +224,28 @@ func TestFilter(t *testing.T) {
 		{
 			name:        "pod not opted in — all nodes pass",
 			pod:         makeVM("vm", vmNamespace, false, pvcName),
-			objects:     []runtime.Object{makePVC(pvcName, vmNamespace), makeShareManagerPod(pvcName, targetNode)},
+			objects:     []runtime.Object{makePVC(pvcName, vmNamespace, pvName), makeShareManagerPod(pvName, targetNode)},
 			nodeName:    otherNode,
 			wantSuccess: true,
 		},
 		{
 			name:        "opted in, no share-manager — all nodes pass",
 			pod:         makeVM("vm", vmNamespace, true, pvcName),
-			objects:     []runtime.Object{makePVC(pvcName, vmNamespace)},
+			objects:     []runtime.Object{makePVC(pvcName, vmNamespace, pvName)},
 			nodeName:    otherNode,
 			wantSuccess: true,
 		},
 		{
 			name:        "opted in, share-manager on target — target node passes",
 			pod:         makeVM("vm", vmNamespace, true, pvcName),
-			objects:     []runtime.Object{makePVC(pvcName, vmNamespace), makeShareManagerPod(pvcName, targetNode)},
+			objects:     []runtime.Object{makePVC(pvcName, vmNamespace, pvName), makeShareManagerPod(pvName, targetNode)},
 			nodeName:    targetNode,
 			wantSuccess: true,
 		},
 		{
 			name:        "opted in, share-manager on target — other node rejected",
 			pod:         makeVM("vm", vmNamespace, true, pvcName),
-			objects:     []runtime.Object{makePVC(pvcName, vmNamespace), makeShareManagerPod(pvcName, targetNode)},
+			objects:     []runtime.Object{makePVC(pvcName, vmNamespace, pvName), makeShareManagerPod(pvName, targetNode)},
 			nodeName:    otherNode,
 			wantSuccess: false,
 		},
@@ -265,6 +273,7 @@ func TestScore(t *testing.T) {
 	const (
 		vmNamespace = "default"
 		pvcName     = "my-rwx-pvc"
+		pvName      = "pvc-54191094-16e2-41ae-8f06-3abf5d1fbae1"
 		targetNode  = "node-2"
 		otherNode   = "node-1"
 	)
@@ -279,28 +288,28 @@ func TestScore(t *testing.T) {
 		{
 			name:      "pod not opted in — score 0",
 			pod:       makeVM("vm", vmNamespace, false, pvcName),
-			objects:   []runtime.Object{makePVC(pvcName, vmNamespace), makeShareManagerPod(pvcName, targetNode)},
+			objects:   []runtime.Object{makePVC(pvcName, vmNamespace, pvName), makeShareManagerPod(pvName, targetNode)},
 			nodeName:  targetNode,
 			wantScore: 0,
 		},
 		{
 			name:      "opted in, no share-manager — score 0 for all nodes",
 			pod:       makeVM("vm", vmNamespace, true, pvcName),
-			objects:   []runtime.Object{makePVC(pvcName, vmNamespace)},
+			objects:   []runtime.Object{makePVC(pvcName, vmNamespace, pvName)},
 			nodeName:  targetNode,
 			wantScore: 0,
 		},
 		{
 			name:      "opted in, share-manager on target — target node gets max score",
 			pod:       makeVM("vm", vmNamespace, true, pvcName),
-			objects:   []runtime.Object{makePVC(pvcName, vmNamespace), makeShareManagerPod(pvcName, targetNode)},
+			objects:   []runtime.Object{makePVC(pvcName, vmNamespace, pvName), makeShareManagerPod(pvName, targetNode)},
 			nodeName:  targetNode,
 			wantScore: framework.MaxNodeScore,
 		},
 		{
 			name:      "opted in, share-manager on target — other node gets 0",
 			pod:       makeVM("vm", vmNamespace, true, pvcName),
-			objects:   []runtime.Object{makePVC(pvcName, vmNamespace), makeShareManagerPod(pvcName, targetNode)},
+			objects:   []runtime.Object{makePVC(pvcName, vmNamespace, pvName), makeShareManagerPod(pvName, targetNode)},
 			nodeName:  otherNode,
 			wantScore: 0,
 		},

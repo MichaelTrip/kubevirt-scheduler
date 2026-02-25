@@ -62,8 +62,17 @@ func getShareManagerNodeForPVC(ctx context.Context, clientset kubernetes.Interfa
 		return "", nil
 	}
 
+	// Longhorn names share-manager pods after the PV name (which equals the
+	// PVC UID for dynamically provisioned volumes), not the PVC name.
+	// e.g. share-manager-pvc-54191094-16e2-41ae-8f06-3abf5d1fbae1
+	pvName := pvc.Spec.VolumeName
+	if pvName == "" {
+		// PVC not yet bound to a PV.
+		return "", nil
+	}
+
 	// Look up the share-manager pod in the longhorn-system namespace.
-	shareManagerName := fmt.Sprintf("%s%s", ShareManagerPrefix, pvcName)
+	shareManagerName := fmt.Sprintf("%s%s", ShareManagerPrefix, pvName)
 	smPod, err := clientset.CoreV1().Pods(LonghornNamespace).Get(ctx, shareManagerName, metav1.GetOptions{})
 	if err != nil {
 		// Share-manager pod doesn't exist yet — that's fine.
