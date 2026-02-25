@@ -12,9 +12,8 @@ WORKDIR /workspace
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy source
-COPY cmd/ cmd/
-COPY pkg/ pkg/
+# Copy all source (respects .dockerignore)
+COPY . .
 
 # Build the scheduler binary
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
