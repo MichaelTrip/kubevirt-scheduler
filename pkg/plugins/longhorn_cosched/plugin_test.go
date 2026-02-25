@@ -121,6 +121,7 @@ func TestIsOptedIn(t *testing.T) {
 }
 
 // --- findShareManagerNode tests ---
+// These tests pass nil for dynClient so only the pod-based fallback is exercised.
 
 func TestFindShareManagerNode(t *testing.T) {
 	const (
@@ -191,7 +192,8 @@ func TestFindShareManagerNode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			clientset := fake.NewSimpleClientset(tt.objects...)
-			got, err := findShareManagerNode(context.Background(), clientset, tt.pod)
+			// nil dynClient: CRD lookup is skipped, pod-based fallback is used.
+			got, err := findShareManagerNode(context.Background(), clientset, nil, tt.pod)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("findShareManagerNode() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -254,7 +256,8 @@ func TestFilter(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			clientset := fake.NewSimpleClientset(tt.objects...)
-			plugin := &Plugin{clientset: clientset}
+			// nil dynClient: CRD lookup is skipped, pod-based fallback is used.
+			plugin := &Plugin{clientset: clientset, dynClient: nil}
 			nodeInfo := makeNodeInfo(tt.nodeName)
 			status := plugin.Filter(context.Background(), nil, tt.pod, nodeInfo)
 			if tt.wantSuccess && status != nil && !status.IsSuccess() {
@@ -318,7 +321,8 @@ func TestScore(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			clientset := fake.NewSimpleClientset(tt.objects...)
-			plugin := &Plugin{clientset: clientset}
+			// nil dynClient: CRD lookup is skipped, pod-based fallback is used.
+			plugin := &Plugin{clientset: clientset, dynClient: nil}
 			score, status := plugin.Score(context.Background(), nil, tt.pod, tt.nodeName)
 			if status != nil && !status.IsSuccess() {
 				t.Errorf("Score() returned error status: %v", status.Message())

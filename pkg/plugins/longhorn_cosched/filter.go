@@ -27,7 +27,7 @@ func (p *Plugin) Filter(ctx context.Context, state *framework.CycleState, pod *c
 		return framework.NewStatus(framework.Error, "node not found")
 	}
 
-	shareManagerNode, err := findShareManagerNode(ctx, p.clientset, pod)
+	shareManagerNode, err := findShareManagerNode(ctx, p.clientset, p.dynClient, pod)
 	if err != nil {
 		return framework.NewStatus(framework.Error, fmt.Sprintf("error looking up share-manager pod: %v", err))
 	}

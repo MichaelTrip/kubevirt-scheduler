@@ -21,7 +21,7 @@ func (p *Plugin) Score(ctx context.Context, state *framework.CycleState, pod *co
 		return 0, nil
 	}
 
-	shareManagerNode, err := findShareManagerNode(ctx, p.clientset, pod)
+	shareManagerNode, err := findShareManagerNode(ctx, p.clientset, p.dynClient, pod)
 	if err != nil {
 		return 0, framework.NewStatus(framework.Error, fmt.Sprintf("error looking up share-manager pod: %v", err))
 	}

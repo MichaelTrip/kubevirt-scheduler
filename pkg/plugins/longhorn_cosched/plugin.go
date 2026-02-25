@@ -9,6 +9,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 )
@@ -28,15 +29,16 @@ const (
 	LonghornNamespace = "longhorn-system"
 
 	// ShareManagerPrefix is the prefix used by Longhorn for share-manager pod names.
-	// The full name is: share-manager-<pvc-name>
+	// The full name is: share-manager-<pv-name>
 	ShareManagerPrefix = "share-manager-"
 )
 
 // Plugin implements the Filter and Score extension points of the Kubernetes
 // Scheduling Framework to co-locate VM pods with their Longhorn share-manager pods.
 type Plugin struct {
-	handle    framework.Handle
-	clientset kubernetes.Interface
+	handle     framework.Handle
+	clientset  kubernetes.Interface
+	dynClient  dynamic.Interface
 }
 
 var _ framework.FilterPlugin = &Plugin{}
@@ -54,9 +56,15 @@ func New(_ context.Context, _ runtime.Object, h framework.Handle) (framework.Plu
 		return nil, fmt.Errorf("failed to create kubernetes clientset: %w", err)
 	}
 
+	dynClient, err := dynamic.NewForConfig(h.KubeConfig())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create dynamic client: %w", err)
+	}
+
 	return &Plugin{
 		handle:    h,
 		clientset: clientset,
+		dynClient: dynClient,
 	}, nil
 }
 
