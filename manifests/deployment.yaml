@@ -31,7 +31,7 @@ spec:
       containers:
         - name: kubevirt-scheduler
           # Replace with your actual image reference after building and pushing
-          image: ghcr.io/michaeltrip/kubevirt-scheduler:c096a98821712f58db360a972b25430ec5198813
+          image: ghcr.io/michaeltrip/kubevirt-scheduler:f684b8079d666284dae98f902406911b91e9d0f3
           imagePullPolicy: IfNotPresent
           command:
             - /kubevirt-scheduler

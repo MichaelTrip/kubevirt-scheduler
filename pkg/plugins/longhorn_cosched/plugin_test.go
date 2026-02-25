@@ -82,10 +82,11 @@ func makeNodeInfo(name string) *framework.NodeInfo {
 }
 
 // makeMigrationTargetVM creates a virt-launcher pod that is a live-migration target.
+// KubeVirt sets kubevirt.io/migrationJobUID to the UID of the migration object.
 func makeMigrationTargetVM(name, namespace string, pvcNames ...string) *corev1.Pod {
 	pod := makeVM(name, namespace, true, pvcNames...)
 	pod.Labels = map[string]string{
-		MigrationTargetLabel: "",
+		MigrationTargetLabel: "08b02237-4ab6-493b-a4e0-c90e5e940a47",
 	}
 	return pod
 }

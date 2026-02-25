@@ -33,17 +33,18 @@ const (
 	ShareManagerPrefix = "share-manager-"
 
 	// MigrationTargetLabel is the KubeVirt label set on virt-launcher pods that
-	// are being created as the target of a live migration. The plugin must not
+	// are being created as the target of a live migration. Its value is the UID
+	// of the VirtualMachineInstanceMigration object. The plugin must not
 	// constrain these pods — the migration subsystem handles node selection.
-	MigrationTargetLabel = "kubevirt.io/isMigrationTarget"
+	MigrationTargetLabel = "kubevirt.io/migrationJobUID"
 )
 
 // Plugin implements the Filter and Score extension points of the Kubernetes
 // Scheduling Framework to co-locate VM pods with their Longhorn share-manager pods.
 type Plugin struct {
-	handle     framework.Handle
-	clientset  kubernetes.Interface
-	dynClient  dynamic.Interface
+	handle    framework.Handle
+	clientset kubernetes.Interface
+	dynClient dynamic.Interface
 }
 
 var _ framework.FilterPlugin = &Plugin{}
@@ -82,13 +83,15 @@ func isOptedIn(pod *corev1.Pod) bool {
 }
 
 // isMigrationTarget returns true if the pod is a KubeVirt live-migration target
-// pod. Migration target pods carry the label "kubevirt.io/isMigrationTarget".
+// pod. KubeVirt sets the label "kubevirt.io/migrationJobUID" to the UID of the
+// VirtualMachineInstanceMigration object on the target virt-launcher pod.
 // The plugin must be a no-op for these pods: the KubeVirt migration controller
-// already selects the destination node, and constraining it would break migration.
+// already selects the destination node via node affinity, and constraining it
+// to the share-manager node would break live migration.
 func isMigrationTarget(pod *corev1.Pod) bool {
 	if pod.Labels == nil {
 		return false
 	}
-	_, ok := pod.Labels[MigrationTargetLabel]
-	return ok
+	uid, ok := pod.Labels[MigrationTargetLabel]
+	return ok && uid != ""
 }
