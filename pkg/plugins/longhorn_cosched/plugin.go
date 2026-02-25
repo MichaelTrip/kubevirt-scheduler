@@ -31,6 +31,11 @@ const (
 	// ShareManagerPrefix is the prefix used by Longhorn for share-manager pod names.
 	// The full name is: share-manager-<pv-name>
 	ShareManagerPrefix = "share-manager-"
+
+	// MigrationTargetLabel is the KubeVirt label set on virt-launcher pods that
+	// are being created as the target of a live migration. The plugin must not
+	// constrain these pods — the migration subsystem handles node selection.
+	MigrationTargetLabel = "kubevirt.io/isMigrationTarget"
 )
 
 // Plugin implements the Filter and Score extension points of the Kubernetes
@@ -74,4 +79,16 @@ func isOptedIn(pod *corev1.Pod) bool {
 		return false
 	}
 	return pod.Annotations[AnnotationKey] == AnnotationValue
+}
+
+// isMigrationTarget returns true if the pod is a KubeVirt live-migration target
+// pod. Migration target pods carry the label "kubevirt.io/isMigrationTarget".
+// The plugin must be a no-op for these pods: the KubeVirt migration controller
+// already selects the destination node, and constraining it would break migration.
+func isMigrationTarget(pod *corev1.Pod) bool {
+	if pod.Labels == nil {
+		return false
+	}
+	_, ok := pod.Labels[MigrationTargetLabel]
+	return ok
 }

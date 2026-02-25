@@ -17,7 +17,7 @@ import (
 // If the pod does not have the annotation, or no share-manager pod is found,
 // all nodes receive 0 (neutral — the plugin is a no-op).
 func (p *Plugin) Score(ctx context.Context, state *framework.CycleState, pod *corev1.Pod, nodeName string) (int64, *framework.Status) {
-	if !isOptedIn(pod) {
+	if !isOptedIn(pod) || isMigrationTarget(pod) {
 		return 0, nil
 	}
 

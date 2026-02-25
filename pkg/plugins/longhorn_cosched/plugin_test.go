@@ -81,6 +81,44 @@ func makeNodeInfo(name string) *framework.NodeInfo {
 	return ni
 }
 
+// makeMigrationTargetVM creates a virt-launcher pod that is a live-migration target.
+func makeMigrationTargetVM(name, namespace string, pvcNames ...string) *corev1.Pod {
+	pod := makeVM(name, namespace, true, pvcNames...)
+	pod.Labels = map[string]string{
+		MigrationTargetLabel: "",
+	}
+	return pod
+}
+
+// --- isMigrationTarget tests ---
+
+func TestIsMigrationTarget(t *testing.T) {
+	tests := []struct {
+		name string
+		pod  *corev1.Pod
+		want bool
+	}{
+		{
+			name: "regular VM pod — not a migration target",
+			pod:  makeVM("vm", "default", true),
+			want: false,
+		},
+		{
+			name: "migration target pod",
+			pod:  makeMigrationTargetVM("vm", "default", "pvc"),
+			want: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isMigrationTarget(tt.pod)
+			if got != tt.want {
+				t.Errorf("isMigrationTarget() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 // --- isOptedIn tests ---
 
 func TestIsOptedIn(t *testing.T) {
@@ -251,6 +289,13 @@ func TestFilter(t *testing.T) {
 			nodeName:    otherNode,
 			wantSuccess: false,
 		},
+		{
+			name:        "migration target pod — all nodes pass (plugin is no-op)",
+			pod:         makeMigrationTargetVM("vm", vmNamespace, pvcName),
+			objects:     []runtime.Object{makePVC(pvcName, vmNamespace, pvName), makeShareManagerPod(pvName, targetNode)},
+			nodeName:    otherNode,
+			wantSuccess: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -314,6 +359,13 @@ func TestScore(t *testing.T) {
 			pod:       makeVM("vm", vmNamespace, true, pvcName),
 			objects:   []runtime.Object{makePVC(pvcName, vmNamespace, pvName), makeShareManagerPod(pvName, targetNode)},
 			nodeName:  otherNode,
+			wantScore: 0,
+		},
+		{
+			name:      "migration target pod — score 0 for all nodes (plugin is no-op)",
+			pod:       makeMigrationTargetVM("vm", vmNamespace, pvcName),
+			objects:   []runtime.Object{makePVC(pvcName, vmNamespace, pvName), makeShareManagerPod(pvName, targetNode)},
+			nodeName:  targetNode,
 			wantScore: 0,
 		},
 	}

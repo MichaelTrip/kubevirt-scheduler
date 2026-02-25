@@ -18,7 +18,7 @@ import (
 // If the pod does not have the annotation, or no share-manager pod is found,
 // all nodes pass (the plugin is a no-op).
 func (p *Plugin) Filter(ctx context.Context, state *framework.CycleState, pod *corev1.Pod, nodeInfo *framework.NodeInfo) *framework.Status {
-	if !isOptedIn(pod) {
+	if !isOptedIn(pod) || isMigrationTarget(pod) {
 		return nil
 	}
 
