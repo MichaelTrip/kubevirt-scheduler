@@ -12,7 +12,7 @@ When KubeVirt VMs use Longhorn RWX volumes, Longhorn creates a `share-manager` p
 
 | Plugin | Behaviour |
 |---|---|
-| **Filter** | If a share-manager pod is already running for the VM's PVC, only the node where it runs passes the filter |
+| **Filter** | If a share-manager is assigned for the VM's PVC, only the node where it runs passes the filter |
 | **Score** | The share-manager's node receives the maximum score (100); all others receive 0 |
 
 The scheduler is **opt-in** via a pod annotation — only pods that explicitly request it are affected.
@@ -24,16 +24,32 @@ VM Pod created
   │
   ├─ No annotation → default scheduling (no-op)
   │
+  ├─ Migration target pod (kubevirt.io/migrationJobUID set)
+  │    └─ Plugin is a no-op — KubeVirt migration controller
+  │       handles node selection via node affinity
+  │
   └─ annotation kubevirt-scheduler/co-schedule: "true"
        │
-       ├─ No share-manager pod found yet
+       ├─ No share-manager found yet
        │    └─ VM schedules freely on best node
        │
-       └─ share-manager pod running on node-X
+       └─ Share-manager assigned to node-X
             └─ Filter: only node-X passes
                Score: node-X gets score 100
                → VM scheduled on node-X (co-located)
 ```
+
+### Share-manager node discovery
+
+The plugin resolves the target node using two methods, in order:
+
+1. **ShareManager CRD** (`sharemanagers.longhorn.io/v1beta2`, `status.ownerID`) — Longhorn sets this field as soon as it assigns the share-manager to a node, **before** the share-manager pod starts. This avoids the chicken-and-egg problem where the pod hasn't started yet when the VM is being scheduled.
+
+2. **Share-manager pod** (fallback) — if the CRD lookup yields nothing, the plugin checks whether the `share-manager-<pv-name>` pod in `longhorn-system` is in `Running` phase.
+
+### Live migration
+
+When `virtctl migrate` is used, KubeVirt creates a new **target virt-launcher pod** and sets the label `kubevirt.io/migrationJobUID` on it. The plugin detects this label and becomes a **no-op** for migration target pods — the KubeVirt migration controller already selects the destination node via pod node affinity, and constraining it to the share-manager node would break migration.
 
 ## Installation
 
@@ -90,16 +106,23 @@ KubeVirt propagates annotations from the `VirtualMachine` template to the `virt-
 
 ### How share-manager pods are discovered
 
-Longhorn names share-manager pods as:
+Longhorn names share-manager pods after the **PV name** (which equals the PVC UID for dynamically provisioned volumes):
+
 ```
-longhorn-system/share-manager-<pvc-name>
+longhorn-system/share-manager-pvc-<uuid>
 ```
 
 The plugin:
 1. Lists all PVCs referenced by the VM pod
 2. Checks each PVC is `ReadWriteMany`
-3. Looks up `longhorn-system/share-manager-<pvc-name>`
-4. If found and `Running`, uses that pod's node for Filter/Score
+3. Resolves the PV name from `pvc.spec.volumeName`
+4. Queries the `ShareManager` CRD (`sharemanagers.longhorn.io`) for `status.ownerID` — the node assigned by Longhorn
+5. Falls back to checking the `share-manager-<pv-name>` pod phase if the CRD yields nothing
+6. Uses the resolved node for Filter/Score
+
+### Live migration behaviour
+
+Migration target pods are identified by the label `kubevirt.io/migrationJobUID` (set by KubeVirt to the UID of the `VirtualMachineInstanceMigration` object). The plugin skips both Filter and Score for these pods, allowing the KubeVirt migration controller to place the target pod freely.
 
 ## Configuration
 
@@ -109,7 +132,9 @@ The plugin:
 | Opt-in annotation value | `true` |
 | Scheduler name | `kubevirt-scheduler` |
 | Share-manager namespace | `longhorn-system` |
-| Share-manager pod name pattern | `share-manager-<pvc-name>` |
+| ShareManager CRD | `sharemanagers.longhorn.io/v1beta2` |
+| Share-manager pod name pattern | `share-manager-<pv-name>` |
+| Migration target label | `kubevirt.io/migrationJobUID` |
 
 ## Development
 
@@ -136,10 +161,10 @@ go test ./pkg/...
 kubevirt-scheduler/
 ├── cmd/scheduler/main.go                        # Entry point
 ├── pkg/plugins/longhorn_cosched/
-│   ├── plugin.go                                # Plugin registration & constants
+│   ├── plugin.go                                # Plugin registration, constants & helpers
 │   ├── filter.go                                # Filter extension point
 │   ├── score.go                                 # Score extension point
-│   ├── sharemanager.go                          # Share-manager pod lookup
+│   ├── sharemanager.go                          # ShareManager CRD + pod lookup
 │   └── plugin_test.go                           # Unit tests
 ├── manifests/
 │   ├── rbac.yaml                                # RBAC permissions
