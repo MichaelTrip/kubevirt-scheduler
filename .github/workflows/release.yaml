@@ -56,14 +56,14 @@ jobs:
 
       - name: Update deployment.yaml with new image tag
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ steps.meta.outputs.version }}
         run: |
           sed -i "s|image: ghcr.io/michaeltrip/kubevirt-scheduler:.*|image: ghcr.io/michaeltrip/kubevirt-scheduler:${TAG}|" \
             manifests/deployment.yaml
 
       - name: Commit updated deployment.yaml
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ steps.meta.outputs.version }}
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
