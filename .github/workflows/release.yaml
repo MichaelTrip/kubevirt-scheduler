@@ -64,15 +64,12 @@ jobs:
       - name: Commit updated deployment.yaml
         env:
           TAG: ${{ steps.meta.outputs.version }}
-          REF: ${{ github.ref_name }}
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add manifests/deployment.yaml
           git diff --cached --quiet || git commit -m "chore: update deployment image to ${TAG} [skip ci]"
           git push origin HEAD:main
-          git tag -f "${REF}"
-          git push origin "${REF}" --force
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
