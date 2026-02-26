@@ -16,7 +16,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Need full history + ability to push back the updated manifest
+          # Checkout main so we can commit and push back (not detached HEAD at tag)
+          ref: main
+          fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up QEMU
